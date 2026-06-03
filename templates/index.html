@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STEM::EXTRACT — Audio Source Separation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ─── Design Tokens ─────────────────────────────────────────── */
+:root {
+  --bg:         #050509;
+  --surface:    #09091a;
+  --card:       #0d0d1f;
+  --card2:      #10102a;
+  --border:     #18183a;
+  --border2:    #252550;
+  --primary:    #00ffd0;
+  --primary-d:  rgba(0,255,208,.15);
+  --primary-g:  rgba(0,255,208,.25);
+  --accent:     #ff3c8a;
+  --accent-d:   rgba(255,60,138,.15);
+  --purple:     #7c6aff;
+  --gold:       #ffaa00;
+  --cyan2:      #00cfff;
+  --err:        #ff4455;
+  --ok:         #00ffd0;
+  --txt:        #b8b8e0;
+  --txt-d:      #5050808;
+  --txt-dim:    #545480;
+  --txt-bright: #e8e8ff;
+  --mono:       'Share Tech Mono', 'Courier New', monospace;
+  --disp:       'Orbitron', sans-serif;
+  --body:       'Rajdhani', sans-serif;
+  --r:          6px;
+  --glow:       0 0 18px rgba(0,255,208,.35);
+  --glow-sm:    0 0 8px  rgba(0,255,208,.40);
+  --shadow:     0 8px 40px rgba(0,0,0,.7);
+}
+
+/* ─── Reset / Base ────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ─── Grid Background ─────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 20% 15%, rgba(0,255,208,.06) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(255,60,138,.04) 0%, transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Cpath d='M 48 0 L 0 0 0 48' fill='none' stroke='%2315153a' stroke-width='0.6'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* CRT Scanlines */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,.04) 2px, rgba(0,0,0,.04) 4px
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ─── Layout ──────────────────────────────────────────────────── */
+.wrap {
+  position: relative;
+  z-index: 1;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 20px 60px;
+}
+
+/* ─── Header ──────────────────────────────────────────────────── */
+header {
+  text-align: center;
+  padding: 52px 0 36px;
+  position: relative;
+}
+
+.hdr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--primary);
+  letter-spacing: .12em;
+  border: 1px solid var(--border2);
+  padding: 4px 14px;
+  border-radius: 20px;
+  margin-bottom: 22px;
+  background: var(--primary-d);
+}
+
+.hdr-badge .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 6px var(--primary);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+h1 {
+  font-family: var(--disp);
+  font-weight: 900;
+  font-size: clamp(28px, 5vw, 46px);
+  letter-spacing: .06em;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+h1 .sep  { color: var(--accent); }
+h1 .main { color: var(--txt-bright); text-shadow: 0 0 30px rgba(255,255,255,.12); }
+
+.hdr-sub {
+  font-family: var(--body);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: .25em;
+  text-transform: uppercase;
+  color: var(--txt-dim);
+  margin-bottom: 28px;
+}
+
+/* Waveform animation row */
+.waveform-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 32px;
+  margin-bottom: 6px;
+}
+
+.w-bar {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--primary);
+  animation: wave 1.4s ease-in-out infinite;
+  opacity: .7;
+}
+
+.w-bar:nth-child(1)  { height:6px;  animation-delay:0s;     }
+.w-bar:nth-child(2)  { height:14px; animation-delay:.08s;   }
+.w-bar:nth-child(3)  { height:22px; animation-delay:.16s;   }
+.w-bar:nth-child(4)  { height:28px; animation-delay:.24s;   }
+.w-bar:nth-child(5)  { height:32px; animation-delay:.32s;   }
+.w-bar:nth-child(6)  { height:26px; animation-delay:.40s;   }
+.w-bar:nth-child(7)  { height:32px; animation-delay:.32s;   }
+.w-bar:nth-child(8)  { height:28px; animation-delay:.24s;   }
+.w-bar:nth-child(9)  { height:22px; animation-delay:.16s;   }
+.w-bar:nth-child(10) { height:14px; animation-delay:.08s;   }
+.w-bar:nth-child(11) { height:6px;  animation-delay:0s;     }
+
+@keyframes wave {
+  0%,100% { transform: scaleY(1);   opacity:.5; }
+  50%      { transform: scaleY(.25); opacity:1;  }
+}
+
+/* ─── Section visibility system ────────────────────────────────── */
+.section {
+  display: none;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity .35s ease, transform .35s ease;
+}
+
+.section.visible {
+  display: block;
+  animation: fadeUp .35s ease forwards;
+}
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(16px); }
+  to   { opacity:1; transform:translateY(0);    }
+}
+
+/* ─── Cards ───────────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.card-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .15em;
+  color: var(--primary);
+  text-transform: uppercase;
+}
+
+.card-head .icon { opacity: .6; font-style: normal; }
+
+.card-body { padding: 24px 20px; }
+
+/* ─── Upload Zone ─────────────────────────────────────────────── */
+#upload-section { }
+
+.drop-zone {
+  border: 2px dashed var(--border2);
+  border-radius: var(--r);
+  background: var(--card);
+  padding: 60px 30px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, box-shadow .2s;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.drop-zone::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 40% at 50% 50%, var(--primary-d), transparent);
+  opacity: 0;
+  transition: opacity .3s;
+}
+
+.drop-zone:hover,
+.drop-zone.dragover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary), var(--glow), var(--shadow);
+  background: var(--card2);
+}
+
+.drop-zone:hover::before,
+.drop-zone.dragover::before { opacity: 1; }
+
+.drop-icon {
+  font-size: 52px;
+  display: block;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 0 12px rgba(0,255,208,.5));
+  animation: floatIcon 3s ease-in-out infinite;
+}
+
+@keyframes floatIcon {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+.drop-title {
+  font-family: var(--disp);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--txt-bright);
+  margin-bottom: 8px;
+}
+
+.drop-sub {
+  font-size: 13px;
+  color: var(--txt-dim);
+  letter-spacing: .05em;
+  margin-bottom: 20px;
+}
+
+.fmt-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.fmt-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  padding: 3px 9px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--txt-dim);
+  text-transform: uppercase;
+}
+
+/* ─── File Info Bar ───────────────────────────────────────────── */
+#file-info-bar {
+  display: none;
+  margin-top: 16px;
+}
+
+.file-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+
+.file-icon { font-size: 22px; flex-shrink: 0; }
+
+.file-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--txt-bright);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt-dim);
+  flex-shrink: 0;
+}
+
+.file-ok { color: var(--primary); font-size: 18px; flex-shrink: 0; }
+
+/* ─── Config Panel ─────────────────────────────────────────────── */
+#config-section { margin-top: 20px; }
+
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 600px) {
+  .config-grid { grid-template-columns: 1fr; }
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .12em;
+  color: var(--primary);
+  text-transform: uppercase;
+}
+
+select, .toggle-row {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  color: var(--txt-bright);
+  font-family: var(--body);
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0 L6 8 L12 0Z' fill='%2300ffd0'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 34px;
+}
+
+select:focus {
+  border-color: var(--primary);
+  box-shadow: var(--glow-sm);
+}
+
+select option {
+  background: var(--card2);
+  color: var(--txt-bright);
+}
+
+/* Toggle Buttons */
+.toggle-row {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  background: none;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-right: none;
+  color: var(--txt-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  white-space: nowrap;
+}
+
+.toggle-btn:first-child { border-radius: var(--r) 0 0 var(--r); }
+.toggle-btn:last-child  { border-radius: 0 var(--r) var(--r) 0; border-right: 1px solid var(--border2); }
+
+.toggle-btn.active {
+  background: var(--primary-d);
+  border-color: var(--primary);
+  color: var(--primary);
+  box-shadow: inset 0 0 10px var(--primary-d);
+}
+
+/* ─── CTA Button ───────────────────────────────────────────────── */
+.btn-primary {
+  display: block;
+  width: 100%;
+  padding: 15px 24px;
+  background: linear-gradient(135deg, var(--primary-d), transparent);
+  border: 1px solid var(--primary);
+  border-radius: var(--r);
+  color: var(--primary);
+  font-family: var(--disp);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .25s;
+  text-align: center;
+  box-shadow: var(--glow-sm);
+}
+
+.btn-primary:hover {
+  background: var(--primary-d);
+  box-shadow: var(--glow), 0 0 0 1px var(--primary);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active { transform: translateY(0); }
+
+.btn-primary:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  color: var(--txt-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .08em;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.btn-secondary:hover {
+  border-color: var(--txt-dim);
+  color: var(--txt);
+}
+
+/* ─── Progress Section ─────────────────────────────────────────── */
+#progress-section { margin-top: 0; }
+
+.prog-card { margin-bottom: 16px; }
+
+.prog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.prog-label {
+  font-family: var(--disp);
+  font-size: 12px;
+  letter-spacing: .1em;
+  color: var(--txt-bright);
+}
+
+.prog-pct {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--primary);
+  text-shadow: var(--glow-sm);
+  line-height: 1;
+}
+
+.prog-bar-wrap {
+  padding: 0 20px 14px;
+  padding-top: 12px;
+}
+
+.prog-track {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.prog-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), #00e5ff);
+  border-radius: 3px;
+  transition: width .6s ease;
+  width: 0%;
+  box-shadow: 0 0 8px var(--primary);
+  position: relative;
+}
+
+.prog-fill::after {
+  content: '';
+  position: absolute;
+  right: -1px; top: -1px; bottom: -1px;
+  width: 4px;
+  background: white;
+  border-radius: 2px;
+  box-shadow: 0 0 8px white;
+  opacity: .8;
+}
+
+.prog-msg {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--txt-dim);
+  padding: 6px 20px 14px;
+  letter-spacing: .05em;
+}
+
+/* Terminal Log */
+.terminal {
+  background: #03030c;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+  height: 180px;
+  overflow-y: auto;
+  color: #50ff98;
+  box-shadow: inset 0 0 20px rgba(0,0,0,.5);
+}
+
+.terminal::-webkit-scrollbar { width: 4px; }
+.terminal::-webkit-scrollbar-track { background: transparent; }
+.terminal::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.log-line { color: #50ff98; }
+.log-line .ts { color: var(--txt-dim); margin-right: 4px; }
+.log-line.warn { color: var(--gold); }
+.log-line.err  { color: var(--err);  }
+.log-line.ok   { color: var(--primary); }
+
+/* ─── Results Section ──────────────────────────────────────────── */
+#results-section { margin-top: 0; }
+
+.results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 0 2px;
+}
+
+.results-title {
+  font-family: var(--disp);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--txt-bright);
+}
+
+.stems-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.stem-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.stem-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity .3s;
+  border-radius: var(--r);
+}
+
+.stem-card:hover { transform: translateY(-2px); }
+
+.stem-card[data-stem="no_vocals"] { border-color: rgba(0,255,208,.3); }
+.stem-card[data-stem="no_vocals"]::before { background: radial-gradient(ellipse at 50% 0%, rgba(0,255,208,.08), transparent 60%); }
+.stem-card[data-stem="no_vocals"]:hover { border-color: #00ffd0; box-shadow: 0 0 16px rgba(0,255,208,.2); }
+.stem-card[data-stem="no_vocals"]:hover::before { opacity: 1; }
+
+.stem-card[data-stem="vocals"] { border-color: rgba(255,60,138,.25); }
+.stem-card[data-stem="vocals"]::before { background: radial-gradient(ellipse at 50% 0%, rgba(255,60,138,.07), transparent 60%); }
+.stem-card[data-stem="vocals"]:hover { border-color: #ff3c8a; box-shadow: 0 0 16px rgba(255,60,138,.2); }
+.stem-card[data-stem="vocals"]:hover::before { opacity: 1; }
+
+.stem-card[data-stem="drums"] { border-color: rgba(255,170,0,.25); }
+.stem-card[data-stem="drums"]::before { background: radial-gradient(ellipse at 50% 0%, rgba(255,170,0,.07), transparent 60%); }
+.stem-card[data-stem="drums"]:hover { border-color: #ffaa00; box-shadow: 0 0 16px rgba(255,170,0,.2); }
+.stem-card[data-stem="drums"]:hover::before { opacity: 1; }
+
+.stem-card[data-stem="bass"] { border-color: rgba(124,106,255,.25); }
+.stem-card[data-stem="bass"]::before { background: radial-gradient(ellipse at 50% 0%, rgba(124,106,255,.07), transparent 60%); }
+.stem-card[data-stem="bass"]:hover { border-color: #7c6aff; box-shadow: 0 0 16px rgba(124,106,255,.2); }
+.stem-card[data-stem="bass"]:hover::before { opacity: 1; }
+
+.stem-card[data-stem="other"] { border-color: rgba(0,207,255,.25); }
+.stem-card[data-stem="other"]::before { background: radial-gradient(ellipse at 50% 0%, rgba(0,207,255,.07), transparent 60%); }
+.stem-card[data-stem="other"]:hover { border-color: #00cfff; box-shadow: 0 0 16px rgba(0,207,255,.2); }
+.stem-card[data-stem="other"]:hover::before { opacity: 1; }
+
+.stem-icon {
+  font-size: 28px;
+  display: block;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.stem-name {
+  font-family: var(--disp);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--txt-bright);
+}
+
+.stem-key {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  color: var(--txt-dim);
+  text-transform: uppercase;
+}
+
+.stem-waves {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+}
+
+.sw { width: 2px; border-radius: 1px; animation: sw-anim 1.2s ease-in-out infinite; }
+
+.stem-card[data-stem="no_vocals"] .sw { background: #00ffd0; }
+.stem-card[data-stem="vocals"]    .sw { background: #ff3c8a; }
+.stem-card[data-stem="drums"]     .sw { background: #ffaa00; }
+.stem-card[data-stem="bass"]      .sw { background: #7c6aff; }
+.stem-card[data-stem="other"]     .sw { background: #00cfff; }
+
+.sw:nth-child(1) { height:4px;  animation-delay:0s;    }
+.sw:nth-child(2) { height:10px; animation-delay:.1s;   }
+.sw:nth-child(3) { height:16px; animation-delay:.2s;   }
+.sw:nth-child(4) { height:20px; animation-delay:.3s;   }
+.sw:nth-child(5) { height:16px; animation-delay:.2s;   }
+.sw:nth-child(6) { height:10px; animation-delay:.1s;   }
+.sw:nth-child(7) { height:4px;  animation-delay:0s;    }
+
+@keyframes sw-anim {
+  0%,100% { transform:scaleY(1);   }
+  50%      { transform:scaleY(.2); }
+}
+
+.btn-dl {
+  width: 100%;
+  padding: 9px 14px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.btn-dl:hover { opacity: .85; transform: translateY(-1px); }
+.btn-dl:active { transform: none; }
+
+.stem-card[data-stem="no_vocals"] .btn-dl { color: #00ffd0; }
+.stem-card[data-stem="vocals"]    .btn-dl { color: #ff3c8a; }
+.stem-card[data-stem="drums"]     .btn-dl { color: #ffaa00; }
+.stem-card[data-stem="bass"]      .btn-dl { color: #7c6aff; }
+.stem-card[data-stem="other"]     .btn-dl { color: #00cfff; }
+
+.btn-dl:hover {
+  background: rgba(255,255,255,.04);
+  box-shadow: 0 0 12px rgba(255,255,255,.08);
+}
+
+/* Download ALL button */
+.btn-dl-all {
+  width: 100%;
+  padding: 13px 24px;
+  background: linear-gradient(135deg, var(--accent-d), transparent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  color: var(--accent);
+  font-family: var(--disp);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .25s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn-dl-all:hover {
+  box-shadow: 0 0 20px rgba(255,60,138,.3);
+  background: var(--accent-d);
+  transform: translateY(-1px);
+}
+
+/* ─── Reset Row ─────────────────────────────────────────────────── */
+.reset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+}
+
+.reset-info {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt-dim);
+}
+
+/* ─── Error Toast ───────────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: rgba(255,68,85,.12);
+  border: 1px solid var(--err);
+  border-radius: var(--r);
+  padding: 12px 22px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--err);
+  letter-spacing: .05em;
+  transition: transform .3s ease;
+  z-index: 9999;
+  max-width: 420px;
+  text-align: center;
+  box-shadow: 0 0 20px rgba(255,68,85,.2);
+}
+
+#toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ─── Footer ────────────────────────────────────────────────────── */
+footer {
+  text-align: center;
+  padding: 20px 0 30px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt-dim);
+  letter-spacing: .1em;
+  border-top: 1px solid var(--border);
+  margin-top: 40px;
+}
+
+footer span { color: var(--primary); }
+
+/* ─── Scrollbar global ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <!-- ── HEADER ─────────────────────────────────────────────────── -->
+  <header>
+    <div class="hdr-badge">
+      <span class="dot"></span>
+      DEMUCS ENGINE · ACTIVE
+    </div>
+
+    <h1>
+      <span class="main">STEM</span><span class="sep">::</span><span class="main">EXTRACT</span>
+    </h1>
+    <p class="hdr-sub">Audio Source Separation Engine</p>
+
+    <div class="waveform-row">
+      <div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div>
+      <div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div>
+      <div class="w-bar"></div><div class="w-bar"></div><div class="w-bar"></div>
+      <div class="w-bar"></div><div class="w-bar"></div>
+    </div>
+  </header>
+
+  <!-- ── UPLOAD SECTION ──────────────────────────────────────────── -->
+  <section id="upload-section" class="section visible">
+
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".mp3,.wav,.flac,.ogg,.m4a,.aac,.wma,.opus,.aiff,.aif,.mp4" style="display:none">
+      <span class="drop-icon">🎵</span>
+      <div class="drop-title">DROP AUDIO FILE HERE</div>
+      <div class="drop-sub">or click to browse</div>
+      <div class="fmt-tags">
+        <span class="fmt-tag">MP3</span>
+        <span class="fmt-tag">WAV</span>
+        <span class="fmt-tag">FLAC</span>
+        <span class="fmt-tag">OGG</span>
+        <span class="fmt-tag">M4A</span>
+        <span class="fmt-tag">AAC</span>
+        <span class="fmt-tag">WMA</span>
+        <span class="fmt-tag">OPUS</span>
+        <span class="fmt-tag">AIFF</span>
+      </div>
+    </div>
+
+    <div id="file-info-bar" class="file-bar">
+      <span class="file-icon">🎧</span>
+      <span class="file-name" id="file-name-text">—</span>
+      <span class="file-meta" id="file-meta-text">—</span>
+      <span class="file-ok">✓</span>
+    </div>
+
+  </section>
+
+  <!-- ── CONFIG SECTION ─────────────────────────────────────────── -->
+  <section id="config-section" class="section">
+
+    <div class="card">
+      <div class="card-head">
+        <i class="icon">⚙</i> SEPARATION PARAMETERS
+      </div>
+      <div class="card-body">
+
+        <div class="config-grid">
+          <!-- Model -->
+          <div class="field-group">
+            <label for="model-select">AI MODEL</label>
+            <select id="model-select">
+              {% for key, m in models.items() %}
+              <option value="{{ key }}" {% if key == 'htdemucs' %}selected{% endif %}>
+                {{ m.label }} — {{ m.detail }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Output Format -->
+          <div class="field-group">
+            <label for="fmt-select">OUTPUT FORMAT</label>
+            <select id="fmt-select">
+              <option value="wav">WAV  (lossless, larger files)</option>
+              <option value="mp3">MP3 320kbps  (smaller files)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Separation Mode -->
+        <div class="field-group" style="margin-bottom:22px">
+          <label>SEPARATION MODE</label>
+          <div class="toggle-row">
+            <button class="toggle-btn active" data-mode="instrumental">
+              🎵 INSTRUMENTAL ONLY
+            </button>
+            <button class="toggle-btn" data-mode="full">
+              🔬 FULL 4-STEM SPLIT
+            </button>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="process-btn">
+          ⚡ INITIATE EXTRACTION
+        </button>
+
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── PROGRESS SECTION ───────────────────────────────────────── -->
+  <section id="progress-section" class="section">
+
+    <div class="card prog-card">
+      <div class="prog-head">
+        <span class="prog-label" id="prog-label">PROCESSING…</span>
+        <span class="prog-pct" id="prog-pct">0%</span>
+      </div>
+      <div class="prog-bar-wrap">
+        <div class="prog-track">
+          <div class="prog-fill" id="prog-fill"></div>
+        </div>
+      </div>
+      <div class="prog-msg" id="prog-msg">Initialising…</div>
+    </div>
+
+    <div class="terminal" id="terminal"></div>
+
+  </section>
+
+  <!-- ── RESULTS SECTION ────────────────────────────────────────── -->
+  <section id="results-section" class="section">
+
+    <div class="results-header">
+      <div class="results-title">⬇ STEMS READY</div>
+      <button class="btn-secondary" id="new-btn">↺ NEW EXTRACTION</button>
+    </div>
+
+    <div class="stems-grid" id="stems-grid"></div>
+
+    <button class="btn-dl-all" id="dl-all-btn" style="display:none">
+      📦 DOWNLOAD ALL STEMS AS ZIP
+    </button>
+
+    <div class="reset-row">
+      <div class="reset-info" id="job-info-text"></div>
+      <button class="btn-secondary" id="reset-btn2">↺ EXTRACT ANOTHER TRACK</button>
+    </div>
+
+  </section>
+
+</div><!-- /wrap -->
+
+<!-- ── FOOTER ───────────────────────────────────────────────────── -->
+<footer>
+  STEM::EXTRACT · powered by <span>Meta Demucs</span> · HTDemucs model
+</footer>
+
+<!-- ── ERROR TOAST ─────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   STEM::EXTRACT  ·  Frontend Controller
+   ════════════════════════════════════════════════════════════════ */
+
+const STEM_META = {
+  no_vocals: { label: "Instrumental",   icon: "🎵", key: "no_vocals" },
+  vocals:    { label: "Vocals",          icon: "🎤", key: "vocals"    },
+  drums:     { label: "Drums",           icon: "🥁", key: "drums"     },
+  bass:      { label: "Bass",            icon: "🎸", key: "bass"      },
+  other:     { label: "Other / Melody",  icon: "🎹", key: "other"     },
+};
+
+/* ── State ─────────────────────────────────────────────────────── */
+const state = {
+  jobId:  null,
+  mode:   "instrumental",
+  evtSrc: null,
+};
+
+/* ── Section helpers ────────────────────────────────────────────── */
+function showSection(id) {
+  document.querySelectorAll(".section").forEach(s => {
+    s.classList.remove("visible");
+    s.style.display = "none";
+  });
+  const el = document.getElementById(id);
+  if (el) {
+    el.style.display = "block";
+    requestAnimationFrame(() => el.classList.add("visible"));
+  }
+}
+
+function showSections(...ids) {
+  document.querySelectorAll(".section").forEach(s => {
+    s.classList.remove("visible");
+    s.style.display = "none";
+  });
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.display = "block";
+      requestAnimationFrame(() => el.classList.add("visible"));
+    }
+  });
+}
+
+/* ── Toast ──────────────────────────────────────────────────────── */
+let _toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove("show"), 4500);
+}
+
+/* ── File Upload ────────────────────────────────────────────────── */
+const dropZone  = document.getElementById("drop-zone");
+const fileInput = document.getElementById("file-input");
+
+dropZone.addEventListener("click", () => fileInput.click());
+
+dropZone.addEventListener("dragover", e => {
+  e.preventDefault();
+  dropZone.classList.add("dragover");
+});
+
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+fileInput.addEventListener("change", () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+
+async function handleFile(file) {
+  const ALLOWED = [".mp3",".wav",".flac",".ogg",".m4a",".aac",
+                   ".wma",".opus",".aiff",".aif",".mp4"];
+  const ext = file.name.match(/\.[^.]+$/)?.[0]?.toLowerCase() || "";
+
+  if (!ALLOWED.includes(ext)) {
+    showToast(`Unsupported format: ${ext || "(no extension)"}`);
+    return;
+  }
+
+  // Show spinner in drop-zone
+  dropZone.querySelector(".drop-icon").textContent = "⏳";
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  try {
+    const res  = await fetch("/upload", { method: "POST", body: fd });
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+
+    state.jobId = data.job_id;
+
+    // Update file info bar
+    document.getElementById("file-name-text").textContent = data.filename;
+    document.getElementById("file-meta-text").textContent =
+      `${data.size_mb} MB · ${ext.replace(".","").toUpperCase()}`;
+    document.getElementById("file-info-bar").style.display = "flex";
+
+    // Reset icon
+    dropZone.querySelector(".drop-icon").textContent = "🎵";
+
+    // Show upload + config sections
+    showSections("upload-section", "config-section");
+
+  } catch (err) {
+    dropZone.querySelector(".drop-icon").textContent = "🎵";
+    showToast("Upload failed: " + err.message);
+  }
+}
+
+/* ── Mode Toggle ────────────────────────────────────────────────── */
+document.querySelectorAll(".toggle-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".toggle-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.mode = btn.dataset.mode;
+  });
+});
+
+/* ── Process ────────────────────────────────────────────────────── */
+document.getElementById("process-btn").addEventListener("click", async () => {
+  if (!state.jobId) {
+    showToast("No file uploaded yet");
+    return;
+  }
+
+  const model  = document.getElementById("model-select").value;
+  const format = document.getElementById("fmt-select").value;
+
+  // Switch to progress view
+  document.getElementById("terminal").innerHTML = "";
+  setProgress(5, "Connecting to engine…");
+  showSection("progress-section");
+
+  try {
+    const res  = await fetch(`/process/${state.jobId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: state.mode, model, format }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Start failed");
+
+    startSSE(state.jobId);
+
+  } catch (err) {
+    showToast("Processing error: " + err.message);
+    showSections("upload-section", "config-section");
+  }
+});
+
+/* ── SSE Progress ────────────────────────────────────────────────── */
+function startSSE(jobId) {
+  if (state.evtSrc) state.evtSrc.close();
+
+  const src = new EventSource(`/stream/${jobId}`);
+  state.evtSrc = src;
+
+  src.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+
+    setProgress(d.progress, d.message);
+
+    if (d.new_log?.length) appendLog(d.new_log);
+
+    if (d.status === "completed") {
+      src.close();
+      showResults(jobId, d.stems);
+    } else if (d.status === "failed") {
+      src.close();
+      showToast("Separation failed: " + d.message);
+      showSections("upload-section", "config-section");
+    }
+  };
+
+  src.onerror = () => {
+    src.close();
+    // Fallback polling
+    pollFallback(jobId);
+  };
+}
+
+function pollFallback(jobId) {
+  const iv = setInterval(async () => {
+    try {
+      const res  = await fetch(`/status/${jobId}`);
+      const data = await res.json();
+
+      setProgress(data.progress, data.message);
+      if (data.log?.length) appendLog(data.log);
+
+      if (data.status === "completed") {
+        clearInterval(iv);
+        showResults(jobId, data.stems);
+      } else if (data.status === "failed") {
+        clearInterval(iv);
+        showToast("Separation failed: " + data.message);
+        showSections("upload-section", "config-section");
+      }
+    } catch (_) {}
+  }, 1200);
+}
+
+/* ── Progress helpers ───────────────────────────────────────────── */
+function setProgress(pct, msg) {
+  document.getElementById("prog-pct").textContent = `${Math.round(pct)}%`;
+  document.getElementById("prog-fill").style.width = `${pct}%`;
+  if (msg) document.getElementById("prog-msg").textContent = msg;
+  if (pct >= 100) {
+    document.getElementById("prog-label").textContent = "COMPLETE";
+  }
+}
+
+const _seenLogs = new Set();
+
+function appendLog(lines) {
+  const term = document.getElementById("terminal");
+  lines.forEach(line => {
+    if (_seenLogs.has(line)) return;
+    _seenLogs.add(line);
+
+    const div = document.createElement("div");
+    div.className = "log-line" +
+      (line.includes("✗") || line.includes("error") ? " err" : "") +
+      (line.includes("✓") || line.includes("Done")  ? " ok"  : "") +
+      (line.includes("⚠")                           ? " warn": "");
+
+    // Dim the timestamp part [HH:MM:SS]
+    div.innerHTML = line.replace(
+      /(\[\d{2}:\d{2}:\d{2}\])/,
+      '<span class="ts">$1</span>'
+    );
+    term.appendChild(div);
+  });
+  term.scrollTop = term.scrollHeight;
+}
+
+/* ── Show Results ────────────────────────────────────────────────── */
+function showResults(jobId, stems) {
+  const grid = document.getElementById("stems-grid");
+  grid.innerHTML = "";
+
+  const order = ["no_vocals", "vocals", "drums", "bass", "other"];
+  const sorted = [...stems].sort((a, b) => {
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+
+  sorted.forEach(stemKey => {
+    const meta = STEM_META[stemKey] || { label: stemKey, icon: "🎵", key: stemKey };
+    const card = document.createElement("div");
+    card.className = "stem-card";
+    card.dataset.stem = stemKey;
+
+    card.innerHTML = `
+      <span class="stem-icon">${meta.icon}</span>
+      <div>
+        <div class="stem-name">${meta.label}</div>
+        <div class="stem-key">${stemKey}.wav</div>
+      </div>
+      <div class="stem-waves">
+        <div class="sw"></div><div class="sw"></div><div class="sw"></div>
+        <div class="sw"></div><div class="sw"></div><div class="sw"></div>
+        <div class="sw"></div>
+      </div>
+      <button class="btn-dl" data-stem="${stemKey}" data-job="${jobId}">
+        ⬇ DOWNLOAD
+      </button>
+    `;
+    grid.appendChild(card);
+  });
+
+  // Download buttons
+  grid.querySelectorAll(".btn-dl").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const stem = btn.dataset.stem;
+      const job  = btn.dataset.job;
+      window.location.href = `/download/${job}/${stem}`;
+    });
+  });
+
+  // Also clicking the card downloads it
+  grid.querySelectorAll(".stem-card").forEach(card => {
+    card.addEventListener("click", () => {
+      const btn = card.querySelector(".btn-dl");
+      if (btn) {
+        const stem = btn.dataset.stem;
+        const job  = btn.dataset.job;
+        window.location.href = `/download/${job}/${stem}`;
+      }
+    });
+  });
+
+  // Download all button
+  const dlAll = document.getElementById("dl-all-btn");
+  if (stems.length > 1) {
+    dlAll.style.display = "flex";
+    dlAll.onclick = () => {
+      window.location.href = `/download/${jobId}/all/zip`;
+    };
+  }
+
+  // Info text
+  document.getElementById("job-info-text").textContent =
+    `JOB: ${jobId} · ${stems.length} STEM(S) EXTRACTED`;
+
+  showSection("results-section");
+}
+
+/* ── Reset ──────────────────────────────────────────────────────── */
+function resetApp() {
+  if (state.evtSrc) { state.evtSrc.close(); state.evtSrc = null; }
+
+  if (state.jobId) {
+    fetch(`/cleanup/${state.jobId}`, { method: "DELETE" }).catch(() => {});
+    state.jobId = null;
+  }
+
+  document.getElementById("file-info-bar").style.display  = "none";
+  document.getElementById("file-name-text").textContent   = "—";
+  document.getElementById("file-meta-text").textContent   = "—";
+  document.getElementById("stems-grid").innerHTML         = "";
+  document.getElementById("dl-all-btn").style.display     = "none";
+  document.getElementById("terminal").innerHTML           = "";
+  document.getElementById("job-info-text").textContent    = "";
+  _seenLogs.clear();
+  fileInput.value = "";
+
+  // Reset mode toggle
+  document.querySelectorAll(".toggle-btn").forEach(b => b.classList.remove("active"));
+  document.querySelector('[data-mode="instrumental"]').classList.add("active");
+  state.mode = "instrumental";
+
+  showSection("upload-section");
+}
+
+document.getElementById("new-btn").addEventListener("click", resetApp);
+document.getElementById("reset-btn2").addEventListener("click", resetApp);
+</script>
+
+</body>
+</html>
