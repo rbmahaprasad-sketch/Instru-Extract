@@ -1,4 +1,4 @@
-# STEM::EXTRACT
+# Instru-Extract
 ### Professional Audio Source Separation — Powered by Meta's Demucs
 
 Splits any music track into individual stems — **Instrumental, Vocals, Drums, Bass, Other** —
@@ -139,4 +139,4 @@ app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024   # 1 GB
 - **Demucs** — © Meta AI Research (MIT License)  
   https://github.com/facebookresearch/demucs  
 - **Flask** — © Pallets  
-- UI design — STEM::EXTRACT
+- UI design — Instru-Extract
