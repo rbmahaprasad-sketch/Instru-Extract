@@ -9,7 +9,7 @@ PORT=${1:-5000}
 VENV_DIR="venv"
 
 echo ""
-echo "  ╔══ STEM::EXTRACT ══════════════════════════════╗"
+echo "  ╔══ Instru-Extract ══════════════════════════════╗"
 echo "  ║   Audio Source Separation — Demucs Engine     ║"
 echo "  ╚════════════════════════════════════════════════╝"
 echo ""
