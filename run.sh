@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────
-#  STEM::EXTRACT  ·  Linux / macOS launcher
+#  Instru-Extract  ·  Linux / macOS launcher
 # ─────────────────────────────────────────────────────────
 
 set -e
