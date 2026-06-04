@@ -7,7 +7,7 @@ set PORT=5000
 if not "%1"=="" set PORT=%1
 
 echo.
-echo   ╔══ STEM::EXTRACT ══════════════════════════════╗
+echo   ╔══ Instru-Extract ══════════════════════════════╗
 echo   ║   Audio Source Separation — Demucs Engine     ║
 echo   ╚════════════════════════════════════════════════╝
 echo.
