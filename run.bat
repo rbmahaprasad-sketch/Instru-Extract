@@ -1,6 +1,6 @@
 @echo off
 :: ─────────────────────────────────────────────────────────
-::  STEM::EXTRACT  ·  Windows Launcher
+::  Instru-Extract  ·  Windows Launcher
 :: ─────────────────────────────────────────────────────────
 
 set PORT=5000
