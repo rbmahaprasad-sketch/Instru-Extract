@@ -342,7 +342,7 @@ def cleanup(job_id: str):
 # ──────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-    print(f"\n  ╔══ STEM::EXTRACT ═══════════════════════════╗")
+    print(f"\n  ╔══ Instru-Extract ═══════════════════════════╗")
     print(f"  ║  Running at  http://localhost:{port}         ║")
     print(f"  ╚════════════════════════════════════════════╝\n")
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
