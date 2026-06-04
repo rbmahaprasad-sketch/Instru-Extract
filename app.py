@@ -1,5 +1,5 @@
 """
-STEM::EXTRACT — Professional Audio Source Separation
+Instru-Extract — Professional Audio Source Separation
 Powered by Meta's Demucs HTDemucs deep learning model.
 
 Supports: MP3, WAV, FLAC, OGG, M4A, AAC, WMA, OPUS, AIFF
